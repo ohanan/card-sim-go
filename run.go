@@ -104,7 +104,7 @@ func (s *serverSystem) Register(req *RegisterPluginReq, resp *RegisterPluginResp
 		resp.Error = fmt.Sprintf("failed to register plugin, has existed one: %v", info.Name)
 		return nil
 	}
-	if err := s.server.OnPluginLoaded(nil, info); err != nil {
+	if err := s.server.OnPluginRegister(nil, info); err != nil {
 		return err
 	}
 	return nil

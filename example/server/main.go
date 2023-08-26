@@ -9,7 +9,7 @@ import (
 type DemoServer struct {
 }
 
-func (d DemoServer) OnPluginLoaded(ctx card.ServerContext, pluginInfo *card.PluginInfo) error {
+func (d DemoServer) OnPluginRegister(ctx card.ServerContext, pluginInfo *card.PluginInfo) error {
 	println("Plugin loaded")
 	return nil
 }
