@@ -1,6 +1,10 @@
 package card
 
+import (
+	"context"
+)
+
 type Server interface {
-	OnPluginRegister(ctx ServerContext, pluginInfo *PluginInfo) error
-	GetPlugins(ctx ServerContext) ([]PluginInfo, error)
+	Register(ctx context.Context, pluginInfo *PluginInfo, attr string, token string) (err error)
+	GetPlugins(ctx context.Context) (plugins []*PluginInfo, err error)
 }

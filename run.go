@@ -1,23 +1,28 @@
 package card
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
-	"strconv"
-	"sync"
 )
 
 type runOptions struct {
-	port int
+	port  int
+	token string
 }
 type RunOption func(options *runOptions)
 
 func WithServerPort(port int) RunOption {
 	return func(options *runOptions) {
 		options.port = port
+	}
+}
+func WithToken(token string) RunOption {
+	return func(options *runOptions) {
+		options.token = token
 	}
 }
 
@@ -47,20 +52,21 @@ func Run(plugin Plugin, options ...RunOption) error {
 	if err != nil {
 		return err
 	}
-	listen, err := net.Listen("tcp", "127.0.0.1:")
+	listen, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
 	}
-	rpr := &RegisterPluginResp{}
-	err = c.Call("System.Register", &RegisterPluginReq{
-		Info: plugin.GetPluginInfo(),
-		Addr: listen.Addr().String(),
-	}, rpr)
+	s := &_Client{c: c}
+	info, err := plugin.GetPluginInfo(context.Background())
 	if err != nil {
 		return err
 	}
-	s := rpc.NewServer()
-	err = s.RegisterName("CSPlugin", &_Plugin{p: plugin})
+	err = s.Register(context.Background(), info, listen.Addr().String(), "")
+	if err != nil {
+		return err
+	}
+	server := rpc.NewServer()
+	err = server.RegisterName("CP", &_Server{c: plugin})
 	if err != nil {
 		return err
 	}
@@ -69,76 +75,25 @@ func Run(plugin Plugin, options ...RunOption) error {
 		if err != nil {
 			return err
 		}
-		go s.ServeCodec(jsonrpc.NewServerCodec(accept))
+		server.ServeCodec(jsonrpc.NewServerCodec(accept))
 	}
 }
 
-type serverSystem struct {
-	server  Server
-	Addr    string
-	Plugins sync.Map // map[string]*rpc.Client
+type BaseRequest struct {
+}
+type BaseResponse struct {
 }
 
-func (s *serverSystem) getPlugin(name string) *rpc.Client {
-	value, ok := s.Plugins.Load(name)
-	if !ok {
-		return nil
-	}
-	return value.(*rpc.Client)
+func newContextFromBaseRequest(request *BaseRequest) context.Context {
+	return context.Background()
+}
+func newBaseRequestFromContext(ctx context.Context) *BaseRequest {
+	return &BaseRequest{}
 }
 
-func (s *serverSystem) Register(req *RegisterPluginReq, resp *RegisterPluginResp) error {
-	info := req.Info
-	_, ok := s.Plugins.Load(info.Name)
-	if ok {
-		resp.Error = fmt.Sprintf("failed to register plugin, has existed one: %v", info.Name)
-		return nil
-	}
-	client, err := jsonrpc.Dial("tcp", req.Addr)
-	if err != nil {
-		resp.Error = fmt.Sprintf("failed to dial plugin, error: %v", err)
-		return nil
-	}
-	_, loaded := s.Plugins.LoadOrStore(info.Name, client)
-	if loaded {
-		resp.Error = fmt.Sprintf("failed to register plugin, has existed one: %v", info.Name)
-		return nil
-	}
-	if err := s.server.OnPluginRegister(nil, info); err != nil {
-		return err
-	}
-	return nil
+type _Client struct {
+	c *rpc.Client
 }
-
-func RunServer(server Server, onClose <-chan struct{}, options ...RunOption) error {
-	ro := getOptions(options)
-	s := rpc.NewServer()
-	ss := &serverSystem{server: server}
-	err := s.RegisterName("System", ss)
-	if err != nil {
-		return err
-	}
-	err = s.RegisterName("CS", &_Server{
-		s:      server,
-		system: ss,
-	})
-	if err != nil {
-		return err
-	}
-	listen, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(ro.port))
-	if err != nil {
-		return err
-	}
-	ss.Addr = listen.Addr().String()
-	go func() {
-		<-onClose
-		_ = listen.Close()
-	}()
-	for {
-		accept, err := listen.Accept()
-		if err != nil {
-			return err
-		}
-		go s.ServeCodec(jsonrpc.NewServerCodec(accept))
-	}
+type _Server struct {
+	c Plugin
 }
