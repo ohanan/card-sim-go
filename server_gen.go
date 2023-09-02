@@ -16,7 +16,7 @@ func (s *_Server) Init(req *struct {
 }, resp *struct {
 	Base *BaseResponse
 }) error {
-	err := s.c.Init(newContextFromBaseRequest(req.Base))
+	err := s.c.Init(newContextFromBaseRequest(req.Base), nil)
 	resp.Base = &BaseResponse{}
 	return err
 }
